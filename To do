@@ -1,134 +1,162 @@
-////// Program.cs
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
+#Får en feil når vi kjører curl get request imens appen kjører.
+
+Start your C# app in the background. You will see some output, and then you'll get your command prompt back.
+bash
+dotnet run &
+Use code with caution.
+
+Run your curl command. Your server is now listening for requests, so you can execute the curl command to interact with it.
+bash
+curl -X GET https://localhost:7025/scim/v2/Users
+
+
+
+#program cs var opprinnelig (før copilot endret den pga errors som var ukjente):
+
+
+
+using Microsoft.AspNetCore.Mvc;
+using System.Text.Json.Serialization;
+using System.Text.Json;
+using System.Net;
+using System.Collections.Concurrent;
+using Newtonsoft.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+// Configure JSON serialization to ignore null values
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+    options.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+});
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+// --- SCIM Endpoint Setup ---
+// SCIM endpoints are typically at a path like /scim/v2.
+const string ScimBasePath = "/scim/v2";
 
-app.UseHttpsRedirection();
-app.UseAuthorization();
-app.MapControllers();
+// In-memory "database" to simulate the employee system
+var employeeDatabase = new ConcurrentDictionary<string, Employee>();
+
+// --- SCIM 2.0 User Schema ---
+// This is a simplified user model that mimics common SCIM attributes.
+// The actual SCIM schema is more complex (RFC 7643).
+record Employee(
+    string Id,
+    string UserName,
+    string FirstName,
+    string LastName,
+    string Email,
+    bool Active
+);
+
+// --- SCIM 2.0 Endpoints ---
+
+// GET /Users: List users
+app.MapGet($"{ScimBasePath}/Users", () =>
+{
+    Console.WriteLine("Received GET /Users request.");
+    return Results.Ok(new
+    {
+        schemas = new[] { "urn:ietf:params:scim:api:messages:2.0:ListResponse" },
+        totalResults = employeeDatabase.Count,
+        Resources = employeeDatabase.Values
+    });
+});
+
+// GET /Users/{id}: Retrieve a single user
+app.MapGet($"{ScimBasePath}/Users/{{id}}", ([FromRoute] string id) =>
+{
+    Console.WriteLine($"Received GET /Users/{id} request.");
+    if (employeeDatabase.TryGetValue(id, out var employee))
+    {
+        return Results.Ok(employee);
+    }
+    return Results.NotFound();
+});
+
+// POST /Users: Create a new user
+app.MapPost($"{ScimBasePath}/Users", ([FromBody] JsonElement json) =>
+{
+    Console.WriteLine("Received POST /Users request.");
+    // For a real app, you would parse the SCIM payload here
+    // In this dummy, we just print the raw JSON and create a new user.
+    Console.WriteLine("Incoming SCIM Payload: " + json.ToString());
+
+    // Extracting user data from the simplified payload
+    var userName = json.TryGetProperty("userName", out var name) ? name.GetString() : "unknown";
+    var active = json.TryGetProperty("active", out var activeProp) && activeProp.GetBoolean();
+    var email = json.TryGetProperty("emails", out var emails) && emails.EnumerateArray().Any()
+        ? emails.EnumerateArray().First().GetProperty("value").GetString()
+        : "no-email@example.com";
+    
+    // Simulate attribute parsing from the SCIM payload
+    var nameJson = json.TryGetProperty("name", out var nameProperty) ? nameProperty : new JsonElement();
+    var firstName = nameJson.TryGetProperty("givenName", out var givenName) ? givenName.GetString() : "Test";
+    var lastName = nameJson.TryGetProperty("familyName", out var familyName) ? familyName.GetString() : "User";
+
+    // Create and save the new employee
+    var newEmployee = new Employee(
+        Id: Guid.NewGuid().ToString(),
+        UserName: userName,
+        FirstName: firstName,
+        LastName: lastName,
+        Email: email,
+        Active: active
+    );
+
+    employeeDatabase.TryAdd(newEmployee.Id, newEmployee);
+
+    return Results.Created($"{ScimBasePath}/Users/{newEmployee.Id}", newEmployee);
+});
+
+// PUT /Users/{id}: Update a user
+app.MapPut($"{ScimBasePath}/Users/{{id}}", ([FromRoute] string id, [FromBody] JsonElement json) =>
+{
+    Console.WriteLine($"Received PUT /Users/{id} request.");
+    if (employeeDatabase.TryGetValue(id, out var existingEmployee))
+    {
+        // For a real app, you'd parse the SCIM payload and perform a full replace.
+        var userName = json.TryGetProperty("userName", out var name) ? name.GetString() : existingEmployee.UserName;
+        var active = json.TryGetProperty("active", out var activeProp) ? activeProp.GetBoolean() : existingEmployee.Active;
+        
+        var nameJson = json.TryGetProperty("name", out var nameProperty) ? nameProperty : new JsonElement();
+        var firstName = nameJson.TryGetProperty("givenName", out var givenName) ? givenName.GetString() : existingEmployee.FirstName;
+        var lastName = nameJson.TryGetProperty("familyName", out var familyName) ? familyName.GetString() : existingEmployee.LastName;
+        
+        var updatedEmployee = existingEmployee with
+        {
+            UserName = userName,
+            Active = active,
+            FirstName = firstName,
+            LastName = lastName
+        };
+
+        employeeDatabase.TryUpdate(id, updatedEmployee, existingEmployee);
+        return Results.Ok(updatedEmployee);
+    }
+    return Results.NotFound();
+});
+
+// DELETE /Users/{id}: Delete a user
+app.MapDelete($"{ScimBasePath}/Users/{{id}}", ([FromRoute] string id) =>
+{
+    Console.WriteLine($"Received DELETE /Users/{id} request.");
+    if (employeeDatabase.TryRemove(id, out _))
+    {
+        // SCIM protocol typically returns a 204 No Content for successful deletion.
+        return Results.NoContent();
+    }
+    return Results.NotFound();
+});
+
+// Add a test endpoint for the Entra ID connection test
+app.MapGet(ScimBasePath, () =>
+{
+    Console.WriteLine("Received Test Connection request to base path.");
+    return Results.Ok();
+});
+
 app.Run();
-
-
-
-//////////// Controllers/ScimController.cs
-using Microsoft.AspNetCore.Mvc;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-
-namespace ScimEndpoint.Controllers
-{
-    [ApiController]
-    [Route("scim/v2")] // SCIM 2.0 endpoint base path
-    public class ScimController : ControllerBase
-    {
-        // In a real application, this would interact with your employee system's data store
-        private static List<ScimUser> _users = new List<ScimUser>();
-
-        // GET /scim/v2/Users - List users (simplified)
-        [HttpGet("Users")]
-        public ActionResult<ScimListResponse<ScimUser>> GetUsers()
-        {
-            return Ok(new ScimListResponse<ScimUser>
-            {
-                TotalResults = _users.Count,
-                ItemsPerPage = _users.Count,
-                StartIndex = 1,
-                Resources = _users
-            });
-        }
-
-        // POST /scim/v2/Users - Create a new user
-        [HttpPost("Users")]
-        public async Task<ActionResult<ScimUser>> CreateUser([FromBody] ScimUser user)
-        {
-            // Assign a unique ID (in a real system, this would come from your employee system)
-            user.Id = Guid.NewGuid().ToString();
-            _users.Add(user);
-            // Simulate provisioning in employee system
-            Console.WriteLine($"User created in employee system: {user.UserName}");
-            return CreatedAtAction(nameof(GetUserById), new { id = user.Id }, user);
-        }
-
-        // GET /scim/v2/Users/{id} - Get a user by ID
-        [HttpGet("Users/{id}")]
-        public ActionResult<ScimUser> GetUserById(string id)
-        {
-            var user = _users.FirstOrDefault(u => u.Id == id);
-            if (user == null)
-            {
-                return NotFound();
-            }
-            return Ok(user);
-        }
-
-        // PUT /scim/v2/Users/{id} - Update a user
-        [HttpPut("Users/{id}")]
-        public async Task<ActionResult<ScimUser>> UpdateUser(string id, [FromBody] ScimUser updatedUser)
-        {
-            var existingUser = _users.FirstOrDefault(u => u.Id == id);
-            if (existingUser == null)
-            {
-                return NotFound();
-            }
-
-            // Update user properties (simplified)
-            existingUser.UserName = updatedUser.UserName;
-            existingUser.DisplayName = updatedUser.DisplayName;
-            existingUser.Active = updatedUser.Active;
-            // Simulate updating in employee system
-            Console.WriteLine($"User updated in employee system: {existingUser.UserName}");
-            return Ok(existingUser);
-        }
-
-        // DELETE /scim/v2/Users/{id} - Delete a user (simplified, for demonstration)
-        [HttpDelete("Users/{id}")]
-        public ActionResult DeleteUser(string id)
-        {
-            var userToRemove = _users.FirstOrDefault(u => u.Id == id);
-            if (userToRemove == null)
-            {
-                return NotFound();
-            }
-            _users.Remove(userToRemove);
-            Console.WriteLine($"User deleted from employee system: {userToRemove.UserName}");
-            return NoContent();
-        }
-    }
-
-    // Simplified SCIM User model
-    public class ScimUser
-    {
-        public string Id { get; set; }
-        public string UserName { get; set; }
-        public string DisplayName { get; set; }
-        public bool Active { get; set; } = true;
-        public List<string> Schemas { get; set; } = new List<string> { "urn:ietf:params:scim:schemas:core:2.0:User" };
-    }
-
-    // Simplified SCIM List Response model
-    public class ScimListResponse<T>
-    {
-        public int TotalResults { get; set; }
-        public int ItemsPerPage { get; set; }
-        public int StartIndex { get; set; }
-        public List<string> Schemas { get; set; } = new List<string> { "urn:ietf:params:scim:api:messages:2.0:ListResponse" };
-        public List<T> Resources { get; set; }
-    }
-}
