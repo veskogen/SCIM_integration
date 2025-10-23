@@ -1,0 +1,134 @@
+////// Program.cs
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container.
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+var app = builder.Build();
+
+// Configure the HTTP request pipeline.
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+app.UseHttpsRedirection();
+app.UseAuthorization();
+app.MapControllers();
+app.Run();
+
+
+
+//////////// Controllers/ScimController.cs
+using Microsoft.AspNetCore.Mvc;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace ScimEndpoint.Controllers
+{
+    [ApiController]
+    [Route("scim/v2")] // SCIM 2.0 endpoint base path
+    public class ScimController : ControllerBase
+    {
+        // In a real application, this would interact with your employee system's data store
+        private static List<ScimUser> _users = new List<ScimUser>();
+
+        // GET /scim/v2/Users - List users (simplified)
+        [HttpGet("Users")]
+        public ActionResult<ScimListResponse<ScimUser>> GetUsers()
+        {
+            return Ok(new ScimListResponse<ScimUser>
+            {
+                TotalResults = _users.Count,
+                ItemsPerPage = _users.Count,
+                StartIndex = 1,
+                Resources = _users
+            });
+        }
+
+        // POST /scim/v2/Users - Create a new user
+        [HttpPost("Users")]
+        public async Task<ActionResult<ScimUser>> CreateUser([FromBody] ScimUser user)
+        {
+            // Assign a unique ID (in a real system, this would come from your employee system)
+            user.Id = Guid.NewGuid().ToString();
+            _users.Add(user);
+            // Simulate provisioning in employee system
+            Console.WriteLine($"User created in employee system: {user.UserName}");
+            return CreatedAtAction(nameof(GetUserById), new { id = user.Id }, user);
+        }
+
+        // GET /scim/v2/Users/{id} - Get a user by ID
+        [HttpGet("Users/{id}")]
+        public ActionResult<ScimUser> GetUserById(string id)
+        {
+            var user = _users.FirstOrDefault(u => u.Id == id);
+            if (user == null)
+            {
+                return NotFound();
+            }
+            return Ok(user);
+        }
+
+        // PUT /scim/v2/Users/{id} - Update a user
+        [HttpPut("Users/{id}")]
+        public async Task<ActionResult<ScimUser>> UpdateUser(string id, [FromBody] ScimUser updatedUser)
+        {
+            var existingUser = _users.FirstOrDefault(u => u.Id == id);
+            if (existingUser == null)
+            {
+                return NotFound();
+            }
+
+            // Update user properties (simplified)
+            existingUser.UserName = updatedUser.UserName;
+            existingUser.DisplayName = updatedUser.DisplayName;
+            existingUser.Active = updatedUser.Active;
+            // Simulate updating in employee system
+            Console.WriteLine($"User updated in employee system: {existingUser.UserName}");
+            return Ok(existingUser);
+        }
+
+        // DELETE /scim/v2/Users/{id} - Delete a user (simplified, for demonstration)
+        [HttpDelete("Users/{id}")]
+        public ActionResult DeleteUser(string id)
+        {
+            var userToRemove = _users.FirstOrDefault(u => u.Id == id);
+            if (userToRemove == null)
+            {
+                return NotFound();
+            }
+            _users.Remove(userToRemove);
+            Console.WriteLine($"User deleted from employee system: {userToRemove.UserName}");
+            return NoContent();
+        }
+    }
+
+    // Simplified SCIM User model
+    public class ScimUser
+    {
+        public string Id { get; set; }
+        public string UserName { get; set; }
+        public string DisplayName { get; set; }
+        public bool Active { get; set; } = true;
+        public List<string> Schemas { get; set; } = new List<string> { "urn:ietf:params:scim:schemas:core:2.0:User" };
+    }
+
+    // Simplified SCIM List Response model
+    public class ScimListResponse<T>
+    {
+        public int TotalResults { get; set; }
+        public int ItemsPerPage { get; set; }
+        public int StartIndex { get; set; }
+        public List<string> Schemas { get; set; } = new List<string> { "urn:ietf:params:scim:api:messages:2.0:ListResponse" };
+        public List<T> Resources { get; set; }
+    }
+}
