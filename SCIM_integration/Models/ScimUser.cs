@@ -1,53 +1,41 @@
-using Newtonsoft.Json;
-using System.Collections.Generic;
-
 namespace ScimProvisioningApp.Models
 {
-    public class ScimUser
+
+
+    public record UserModel(
+        string Id,
+        string UserName,
+        string FirstName,
+        string LastName,
+        string Email,
+        bool Active
+    );
+
+
+
+
+    // The main DTO for the SCIM User create payload
+    public class ScimUserCreateModel
     {
-        [JsonProperty("schemas")]
-        public string[] Schemas { get; set; } = { "urn:ietf:params:scim:schemas:core:2.0:User" };
-
-        [JsonProperty("id")]
-        public string Id { get; set; }
-
-        [JsonProperty("externalId")]
-        public string ExternalId { get; set; }
-
-        [JsonProperty("userName")]
+        public List<string> Schemas { get; set; } = new();
         public string UserName { get; set; }
-
-        [JsonProperty("name")]
-        public ScimUserName Name { get; set; }
-
-        [JsonProperty("emails")]
-        public List<ScimEmail> Emails { get; set; }
-
-        [JsonProperty("active")]
+        public ScimNameModel Name { get; set; }
+        public List<ScimEmailModel> Emails { get; set; } = new();
         public bool Active { get; set; }
     }
 
-    public class ScimUserName
+    // A nested DTO for the 'name' attribute
+    public class ScimNameModel
     {
-        [JsonProperty("givenName")]
         public string GivenName { get; set; }
-
-        [JsonProperty("familyName")]
         public string FamilyName { get; set; }
-
-        [JsonProperty("formatted")]
-        public string Formatted { get; set; }
     }
 
-    public class ScimEmail
+    // A nested DTO for the 'emails' attribute
+    public class ScimEmailModel
     {
-        [JsonProperty("value")]
         public string Value { get; set; }
-
-        [JsonProperty("type")]
         public string Type { get; set; }
-
-        [JsonProperty("primary")]
         public bool Primary { get; set; }
     }
 }

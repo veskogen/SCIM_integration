@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using ScimProvisioningApp.Services; // ...existing code...
+using ScimProvisioningApp.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,7 +20,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
-app.UseAuthorization();
+//app.UseHttpsRedirection(); // This is correctly commented out for HTTP testing
+//app.UseAuthorization(); // This should be commented out or removed for this simple dummy app
 app.MapControllers();
 app.Run();

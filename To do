@@ -7,7 +7,7 @@ Use code with caution.
 
 Run your curl command. Your server is now listening for requests, so you can execute the curl command to interact with it.
 bash
-curl -X GET https://localhost:7025/scim/v2/Users
+curl -X GET https://localhost:5066/scim/v2/Users
 
 
 

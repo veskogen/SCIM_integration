@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ScimProvisioningApp.Models;
 using ScimProvisioningApp.Services;
@@ -7,7 +6,6 @@ namespace ScimProvisioningApp.Controllers
 {
     [ApiController]
     [Route("scim/v2")]
-    [Authorize]
     public class ScimController : ControllerBase
     {
         private readonly ScimService _scimService;
@@ -17,60 +15,73 @@ namespace ScimProvisioningApp.Controllers
             _scimService = scimService;
         }
 
+        // GET /Users: List users
         [HttpGet("Users")]
-        public async Task<IActionResult> GetUsers()
+        public IActionResult GetUsers()
         {
-            // Entra ID will not typically perform a GET on all users.
-            // This is mainly for testing and discovery.
-            return Ok(new { Schemas = new[] { "urn:ietf:params:scim:api:messages:2.0:ListResponse" }, Resources = Array.Empty<ScimUser>() });
+            return Ok(_scimService.GetAllUsers());
         }
 
-        [HttpPost("Users")]
-        public async Task<IActionResult> CreateUser([FromBody] ScimUser scimUser)
+        // GET /Users/{id}: Retrieve a single user
+        [HttpGet("Users/{id}")]
+        public IActionResult GetUser(string id)
         {
-            try
-            {
-                var createdUser = await _scimService.CreateUser(scimUser);
-                return CreatedAtAction(nameof(CreateUser), new { id = createdUser.Id }, createdUser);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(ex.Message);
-            }
-        }
-
-        [HttpPatch("Users/{id}")]
-        public async Task<IActionResult> UpdateUser([FromRoute] string id, [FromBody] ScimUser scimUser)
-        {
-            try
-            {
-                var updatedUser = await _scimService.UpdateUser(id, scimUser);
-                if (updatedUser == null)
-                {
-                    return NotFound();
-                }
-                return Ok(updatedUser);
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(ex.Message);
-            }
-        }
-
-        [HttpDelete("Users/{id}")]
-        public async Task<IActionResult> DeleteUser([FromRoute] string id)
-        {
-            try
-            {
-                await _scimService.DeleteUser(id);
-                return NoContent();
-            }
-            catch (Exception)
+            var user = _scimService.GetUserById(id);
+            if (user == null)
             {
                 return NotFound();
             }
+            return Ok(user);
         }
 
-        // Add similar endpoints for Groups if your employee system supports group provisioning.
+        // POST /Users: Create a new user
+        [HttpPost("Users")]
+        public IActionResult CreateUser([FromBody] ScimUserCreateModel scimUser)
+        {
+            // Map the nested SCIM payload to your flat UserModel
+            var userModel = new UserModel
+            (
+                Id: Guid.NewGuid().ToString(), // ID will be set by the service
+                UserName: scimUser.UserName,
+                FirstName: scimUser.Name?.GivenName,
+                LastName: scimUser.Name?.FamilyName,
+                Email: scimUser.Emails?.FirstOrDefault()?.Value,
+                Active: scimUser.Active
+            );
+
+            var newUser = _scimService.CreateUser(userModel);
+            return CreatedAtAction(nameof(GetUser), new { id = newUser.Id }, newUser);
+        }
+
+        // PUT /Users/{id}: Update a user
+        [HttpPut("Users/{id}")]
+        public IActionResult UpdateUser(string id, [FromBody] UserModel userModel)
+        {
+            var updatedUser = _scimService.UpdateUser(id, userModel);
+            if (updatedUser == null)
+            {
+                return NotFound();
+            }
+            return Ok(updatedUser);
+        }
+
+        // DELETE /Users/{id}: Delete a user
+        [HttpDelete("Users/{id}")]
+        public IActionResult DeleteUser(string id)
+        {
+            var result = _scimService.DeleteUser(id);
+            if (!result)
+            {
+                return NotFound();
+            }
+            return NoContent();
+        }
+        
+        // GET /: Base path for Entra ID connection test
+        [HttpGet]
+        public IActionResult GetBase()
+        {
+            return Ok();
+        }
     }
 }
