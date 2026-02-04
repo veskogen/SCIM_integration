@@ -12,24 +12,19 @@ namespace ScimProvisioningApp.Services
             // Seed the database with some initial data for testing
             var initialUser = new UserModel(
                 Guid.NewGuid().ToString(),
-                "initial.user@example.com",
-                "Initial",
-                "User",
-                "initial.user@example.com",
+                "Roy.Robinson@login.com",
+                "Roy",
+                "Robinson",
+                "Roy.Robinson@Lovisenberg.com",
                 true
             );
             _employeeDatabase.TryAdd(initialUser.Id, initialUser);
         }
 
-        public object GetAllUsers()
-        {
-            return new
-            {
-                schemas = new[] { "urn:ietf:params:scim:api:messages:2.0:ListResponse" },
-                totalResults = _employeeDatabase.Count,
-                Resources = _employeeDatabase.Values
-            };
-        }
+        public IEnumerable<UserModel> GetAllUsers()
+{
+    return _employeeDatabase.Values;
+}
 
         public UserModel GetUserById(string id)
         {
