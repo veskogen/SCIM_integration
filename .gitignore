@@ -2,7 +2,6 @@ bin/
 obj/
 .vs/
 *.user
-appsettings.Development.json
 appsettings.json
 To do
 to do.txt
